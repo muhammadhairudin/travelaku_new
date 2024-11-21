@@ -1,14 +1,25 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
-import { adminService } from '../../services/adminService'
+import api from '../../lib/axios'
 
 export const fetchDashboardStats = createAsyncThunk(
   'admin/fetchDashboardStats',
   async (timeRange, { rejectWithValue }) => {
     try {
-      const response = await adminService.getDashboardStats()
-      return response.data
+      const [activities, users, transactions] = await Promise.all([
+        api.get('/api/v1/activities'),
+        api.get('/api/v1/all-user'),
+        api.get('/api/v1/my-transactions')
+      ])
+
+      const stats = {
+        totalActivities: activities.data.data?.length || 0,
+        totalUsers: users.data.data?.length || 0,
+        totalTransactions: transactions.data.data?.length || 0,
+      }
+
+      return stats
     } catch (error) {
-      return rejectWithValue(error.response?.data || error.message)
+      return rejectWithValue(error.response?.data?.message || 'Gagal memuat statistik')
     }
   }
 )
@@ -17,10 +28,10 @@ export const fetchAllActivities = createAsyncThunk(
   'admin/fetchAllActivities',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await adminService.getAllActivities()
-      return response.data
+      const response = await api.get('/api/v1/activities')
+      return response.data.data || []
     } catch (error) {
-      return rejectWithValue(error.response?.data || error.message)
+      return rejectWithValue(error.response?.data?.message || 'Gagal memuat aktivitas')
     }
   }
 )
@@ -29,10 +40,10 @@ export const fetchAllCategories = createAsyncThunk(
   'admin/fetchAllCategories',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await adminService.getAllCategories()
-      return response.data
+      const response = await api.get('/api/v1/categories')
+      return response.data.data || []
     } catch (error) {
-      return rejectWithValue(error.response?.data || error.message)
+      return rejectWithValue(error.response?.data?.message || 'Gagal memuat kategori')
     }
   }
 )
@@ -41,10 +52,10 @@ export const fetchAllUsers = createAsyncThunk(
   'admin/fetchAllUsers',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await adminService.getAllUsers()
-      return response.data
+      const response = await api.get('/api/v1/all-user')
+      return response.data.data || []
     } catch (error) {
-      return rejectWithValue(error.response?.data || error.message)
+      return rejectWithValue(error.response?.data?.message || 'Gagal memuat pengguna')
     }
   }
 )
@@ -53,46 +64,45 @@ export const fetchAllTransactions = createAsyncThunk(
   'admin/fetchAllTransactions',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await adminService.getAllTransactions()
-      return response.data
+      // Ambil semua transaksi
+      const response = await api.get('/api/v1/all-transactions')
+      
+      // Ambil detail setiap transaksi
+      const detailedTransactions = await Promise.all(
+        response.data.data.map(async (transaction) => {
+          const detail = await api.get(`/api/v1/transaction/${transaction.id}`)
+          return {
+            ...detail.data.data,
+            user: transaction.user,
+            amount: detail.data.data.amount || calculateAmount(detail.data.data.items),
+            items: detail.data.data.items || []
+          }
+        })
+      )
+
+      return detailedTransactions
     } catch (error) {
-      return rejectWithValue(error.response?.data || error.message)
+      return rejectWithValue(error.message)
     }
   }
 )
 
-export const fetchAllBanners = createAsyncThunk(
-  'admin/fetchAllBanners',
-  async (_, { rejectWithValue }) => {
-    try {
-      const response = await adminService.getAllBanners()
-      return response.data
-    } catch (error) {
-      return rejectWithValue(error.response?.data || error.message)
-    }
-  }
-)
-
-export const fetchAllPromos = createAsyncThunk(
-  'admin/fetchAllPromos',
-  async (_, { rejectWithValue }) => {
-    try {
-      const response = await adminService.getAllPromos()
-      return response.data
-    } catch (error) {
-      return rejectWithValue(error.response?.data || error.message)
-    }
-  }
-)
+// Helper function untuk menghitung total
+const calculateAmount = (items = []) => {
+  const subtotal = items.reduce((acc, item) => {
+    return acc + ((item.activity?.price || 0) * (item.quantity || 1))
+  }, 0)
+  return subtotal + (subtotal * 0.05) // Tambah service fee 5%
+}
 
 export const updateUserRole = createAsyncThunk(
   'admin/updateUserRole',
   async ({ userId, role }, { rejectWithValue }) => {
     try {
-      const response = await adminService.updateUserRole(userId, role)
+      const response = await api.put(`/api/v1/update-profile`, { role })
       return response.data
     } catch (error) {
-      return rejectWithValue(error.response?.data || error.message)
+      return rejectWithValue(error.response?.data?.message || 'Gagal memperbarui peran pengguna')
     }
   }
 )
@@ -101,10 +111,10 @@ export const updateUserStatus = createAsyncThunk(
   'admin/updateUserStatus',
   async ({ userId, isActive }, { rejectWithValue }) => {
     try {
-      const response = await adminService.updateUserStatus(userId, isActive)
+      const response = await api.put(`/api/v1/users/${userId}/status`, { isActive })
       return response.data
     } catch (error) {
-      return rejectWithValue(error.response?.data || error.message)
+      return rejectWithValue(error.response?.data?.message || 'Gagal memperbarui status pengguna')
     }
   }
 )
@@ -113,10 +123,10 @@ export const createActivity = createAsyncThunk(
   'admin/createActivity',
   async (data, { rejectWithValue }) => {
     try {
-      const response = await adminService.createActivity(data)
+      const response = await api.post('/api/v1/activities', data)
       return response.data
     } catch (error) {
-      return rejectWithValue(error.response?.data || error.message)
+      return rejectWithValue(error.response?.data?.message || 'Gagal membuat aktivitas')
     }
   }
 )
@@ -125,10 +135,10 @@ export const updateActivity = createAsyncThunk(
   'admin/updateActivity',
   async ({ id, data }, { rejectWithValue }) => {
     try {
-      const response = await adminService.updateActivity(id, data)
+      const response = await api.put(`/api/v1/activities/${id}`, data)
       return response.data
     } catch (error) {
-      return rejectWithValue(error.response?.data || error.message)
+      return rejectWithValue(error.response?.data?.message || 'Gagal memperbarui aktivitas')
     }
   }
 )
@@ -137,10 +147,10 @@ export const deleteActivity = createAsyncThunk(
   'admin/deleteActivity',
   async (id, { rejectWithValue }) => {
     try {
-      await adminService.deleteActivity(id)
+      await api.delete(`/api/v1/activities/${id}`)
       return id
     } catch (error) {
-      return rejectWithValue(error.response?.data || error.message)
+      return rejectWithValue(error.response?.data?.message || 'Gagal menghapus aktivitas')
     }
   }
 )
@@ -149,10 +159,10 @@ export const createCategory = createAsyncThunk(
   'admin/createCategory',
   async (data, { rejectWithValue }) => {
     try {
-      const response = await adminService.createCategory(data)
+      const response = await api.post('/api/v1/categories', data)
       return response.data
     } catch (error) {
-      return rejectWithValue(error.response?.data || error.message)
+      return rejectWithValue(error.response?.data?.message || 'Gagal membuat kategori')
     }
   }
 )
@@ -161,10 +171,10 @@ export const updateCategory = createAsyncThunk(
   'admin/updateCategory',
   async ({ id, data }, { rejectWithValue }) => {
     try {
-      const response = await adminService.updateCategory(id, data)
+      const response = await api.put(`/api/v1/categories/${id}`, data)
       return response.data
     } catch (error) {
-      return rejectWithValue(error.response?.data || error.message)
+      return rejectWithValue(error.response?.data?.message || 'Gagal memperbarui kategori')
     }
   }
 )
@@ -173,10 +183,22 @@ export const deleteCategory = createAsyncThunk(
   'admin/deleteCategory',
   async (id, { rejectWithValue }) => {
     try {
-      await adminService.deleteCategory(id)
+      await api.delete(`/api/v1/categories/${id}`)
       return id
     } catch (error) {
-      return rejectWithValue(error.response?.data || error.message)
+      return rejectWithValue(error.response?.data?.message || 'Gagal menghapus kategori')
+    }
+  }
+)
+
+export const fetchAllBanners = createAsyncThunk(
+  'admin/fetchAllBanners',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await api.get('/api/v1/banners')
+      return response.data.data || []
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || 'Gagal memuat banner')
     }
   }
 )
@@ -185,10 +207,10 @@ export const createBanner = createAsyncThunk(
   'admin/createBanner',
   async (data, { rejectWithValue }) => {
     try {
-      const response = await adminService.createBanner(data)
-      return response.data
+      const response = await api.post('/api/v1/create-banner', data)
+      return response.data.data
     } catch (error) {
-      return rejectWithValue(error.response?.data || error.message)
+      return rejectWithValue(error.response?.data?.message || 'Gagal membuat banner')
     }
   }
 )
@@ -197,10 +219,10 @@ export const updateBanner = createAsyncThunk(
   'admin/updateBanner',
   async ({ id, data }, { rejectWithValue }) => {
     try {
-      const response = await adminService.updateBanner(id, data)
-      return response.data
+      const response = await api.put(`/api/v1/update-banner/${id}`, data)
+      return response.data.data
     } catch (error) {
-      return rejectWithValue(error.response?.data || error.message)
+      return rejectWithValue(error.response?.data?.message || 'Gagal memperbarui banner')
     }
   }
 )
@@ -209,10 +231,58 @@ export const deleteBanner = createAsyncThunk(
   'admin/deleteBanner',
   async (id, { rejectWithValue }) => {
     try {
-      await adminService.deleteBanner(id)
+      await api.delete(`/api/v1/delete-banner/${id}`)
       return id
     } catch (error) {
-      return rejectWithValue(error.response?.data || error.message)
+      return rejectWithValue(error.response?.data?.message || 'Gagal menghapus banner')
+    }
+  }
+)
+
+export const fetchAllPromos = createAsyncThunk(
+  'admin/fetchAllPromos',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await api.get('/api/v1/promos')
+      return response.data.data || []
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || 'Gagal memuat promo')
+    }
+  }
+)
+
+export const createPromo = createAsyncThunk(
+  'admin/createPromo',
+  async (data, { rejectWithValue }) => {
+    try {
+      const response = await api.post('/api/v1/create-promo', data)
+      return response.data.data
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || 'Gagal membuat promo')
+    }
+  }
+)
+
+export const updatePromo = createAsyncThunk(
+  'admin/updatePromo',
+  async ({ id, data }, { rejectWithValue }) => {
+    try {
+      const response = await api.put(`/api/v1/update-promo/${id}`, data)
+      return response.data.data
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || 'Gagal memperbarui promo')
+    }
+  }
+)
+
+export const deletePromo = createAsyncThunk(
+  'admin/deletePromo',
+  async (id, { rejectWithValue }) => {
+    try {
+      await api.delete(`/api/v1/delete-promo/${id}`)
+      return id
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || 'Gagal menghapus promo')
     }
   }
 )
@@ -226,6 +296,7 @@ const adminSlice = createSlice({
     users: [],
     transactions: [],
     banners: [],
+    promos: [],
     isLoading: false,
     error: null,
   },
@@ -237,6 +308,7 @@ const adminSlice = createSlice({
       state.users = []
       state.transactions = []
       state.banners = []
+      state.promos = []
       state.error = null
     },
   },
@@ -249,7 +321,7 @@ const adminSlice = createSlice({
       })
       .addCase(fetchDashboardStats.fulfilled, (state, action) => {
         state.isLoading = false
-        state.stats = action.payload.data
+        state.stats = action.payload
       })
       .addCase(fetchDashboardStats.rejected, (state, action) => {
         state.isLoading = false
@@ -304,32 +376,6 @@ const adminSlice = createSlice({
         state.transactions = action.payload
       })
       .addCase(fetchAllTransactions.rejected, (state, action) => {
-        state.isLoading = false
-        state.error = action.payload
-      })
-      // All Banners
-      .addCase(fetchAllBanners.pending, (state) => {
-        state.isLoading = true
-        state.error = null
-      })
-      .addCase(fetchAllBanners.fulfilled, (state, action) => {
-        state.isLoading = false
-        state.banners = action.payload
-      })
-      .addCase(fetchAllBanners.rejected, (state, action) => {
-        state.isLoading = false
-        state.error = action.payload
-      })
-      // All Promos
-      .addCase(fetchAllPromos.pending, (state) => {
-        state.isLoading = true
-        state.error = null
-      })
-      .addCase(fetchAllPromos.fulfilled, (state, action) => {
-        state.isLoading = false
-        state.promos = action.payload
-      })
-      .addCase(fetchAllPromos.rejected, (state, action) => {
         state.isLoading = false
         state.error = action.payload
       })
@@ -449,45 +495,29 @@ const adminSlice = createSlice({
         state.isLoading = false
         state.error = action.payload
       })
-      // Create Banner
-      .addCase(createBanner.pending, (state) => {
+      // Banner Cases
+      .addCase(fetchAllBanners.pending, (state) => {
         state.isLoading = true
         state.error = null
       })
-      .addCase(createBanner.fulfilled, (state, action) => {
+      .addCase(fetchAllBanners.fulfilled, (state, action) => {
         state.isLoading = false
-        state.banners.push(action.payload)
+        state.banners = action.payload
       })
-      .addCase(createBanner.rejected, (state, action) => {
+      .addCase(fetchAllBanners.rejected, (state, action) => {
         state.isLoading = false
         state.error = action.payload
       })
-      // Update Banner
-      .addCase(updateBanner.pending, (state) => {
+      // Promo Cases
+      .addCase(fetchAllPromos.pending, (state) => {
         state.isLoading = true
         state.error = null
       })
-      .addCase(updateBanner.fulfilled, (state, action) => {
+      .addCase(fetchAllPromos.fulfilled, (state, action) => {
         state.isLoading = false
-        const index = state.banners.findIndex(banner => banner.id === action.payload.id)
-        if (index !== -1) {
-          state.banners[index] = action.payload
-        }
+        state.promos = action.payload
       })
-      .addCase(updateBanner.rejected, (state, action) => {
-        state.isLoading = false
-        state.error = action.payload
-      })
-      // Delete Banner
-      .addCase(deleteBanner.pending, (state) => {
-        state.isLoading = true
-        state.error = null
-      })
-      .addCase(deleteBanner.fulfilled, (state, action) => {
-        state.isLoading = false
-        state.banners = state.banners.filter(banner => banner.id !== action.payload)
-      })
-      .addCase(deleteBanner.rejected, (state, action) => {
+      .addCase(fetchAllPromos.rejected, (state, action) => {
         state.isLoading = false
         state.error = action.payload
       })

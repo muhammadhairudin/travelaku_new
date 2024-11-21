@@ -1,65 +1,93 @@
-import { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { useNavigate } from 'react-router-dom'
 import Container from '../../../components/common/Container'
 import CartItem from './components/CartItem'
 import CartSummary from './components/CartSummary'
-import LoadingSpinner from '../../../components/common/LoadingSpinner'
 import { fetchCart } from '../../../store/slices/cartSlice'
-import { ShoppingBagIcon } from '@heroicons/react/24/outline'
+import LoadingSpinner from '../../../components/common/LoadingSpinner'
 
 export default function Cart() {
   const dispatch = useDispatch()
-  const navigate = useNavigate()
   const { items = [], isLoading, error } = useSelector((state) => state.cart)
   const [selectedItems, setSelectedItems] = useState([])
+  const [retryCount, setRetryCount] = useState(0)
 
   useEffect(() => {
-    dispatch(fetchCart())
-  }, [dispatch])
-
-  const handleItemSelect = (itemId, isSelected) => {
-    setSelectedItems(prev => {
-      if (isSelected) {
-        return [...prev, itemId]
-      } else {
-        return prev.filter(id => id !== itemId)
+    const loadCart = async () => {
+      try {
+        const result = await dispatch(fetchCart()).unwrap()
+        console.log('Cart loaded:', result)
+        
+        setRetryCount(0)
+      } catch (err) {
+        console.error('Failed to fetch cart:', err)
+        
+        if (retryCount < 3) {
+          setTimeout(() => {
+            setRetryCount(prev => prev + 1)
+          }, 1000)
+        }
       }
-    })
+    }
+
+    loadCart()
+  }, [dispatch, retryCount])
+
+  useEffect(() => {
+    setSelectedItems([])
+  }, [items])
+
+  const handleSelectItem = (item, isSelected) => {
+    if (isSelected) {
+      setSelectedItems(prev => [...prev, item])
+    } else {
+      setSelectedItems(prev => prev.filter(i => i.id !== item.id))
+    }
   }
 
-  const handleSelectAll = (isSelected) => {
-    if (isSelected && items) {
-      setSelectedItems(items.map(item => item.id))
+  const handleSelectAll = (checked) => {
+    if (checked && items?.length > 0) {
+      setSelectedItems(items)
     } else {
       setSelectedItems([])
     }
   }
 
-  const handleCheckout = () => {
-    if (selectedItems.length === 0) {
-      // Tampilkan pesan error
-      return
-    }
-    navigate('/checkout', { state: { cartItems: selectedItems } })
+  if (isLoading && items.length === 0) {
+    return (
+      <Container className="py-8">
+        <div className="flex justify-center items-center min-h-[300px]">
+          <LoadingSpinner />
+        </div>
+      </Container>
+    )
   }
 
-  if (isLoading) return <LoadingSpinner />
-  if (error) return <div className="text-red-500 text-center">{error}</div>
+  if (error) {
+    return (
+      <Container className="py-8">
+        <div className="text-center">
+          <p className="text-red-500 mb-4">{error}</p>
+          <button
+            onClick={() => setRetryCount(prev => prev + 1)}
+            className="text-primary hover:underline"
+          >
+            Coba lagi
+          </button>
+        </div>
+      </Container>
+    )
+  }
+
   if (!items || items.length === 0) {
     return (
-      <Container className="py-16">
-        <div className="max-w-md mx-auto text-center">
-          <ShoppingBagIcon className="w-24 h-24 mx-auto text-gray-400 mb-6" />
-          <h2 className="text-2xl font-serif font-bold text-primary mb-4">
-            Keranjang Kosong
-          </h2>
-          <p className="text-gray-600 mb-8">
-            Anda belum menambahkan aktivitas ke keranjang. Jelajahi berbagai aktivitas menarik yang kami tawarkan.
-          </p>
+      <Container className="py-8">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-4">Keranjang Belanja</h2>
+          <p className="text-gray-600 mb-4">Keranjang belanja Anda masih kosong</p>
           <button
-            onClick={() => navigate('/activities')}
-            className="btn btn-primary w-full md:w-auto"
+            onClick={() => window.location.href = '/activities'}
+            className="text-primary hover:underline"
           >
             Jelajahi Aktivitas
           </button>
@@ -68,61 +96,54 @@ export default function Cart() {
     )
   }
 
-  const selectedItemsData = items.filter(item => item && item.id && selectedItems.includes(item.id)) || []
-  const totalPrice = selectedItemsData.reduce((sum, item) => sum + (item.activity?.price * item.quantity), 0)
-
   return (
-    <Container className="py-12">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-serif font-bold text-primary">
-            Keranjang Belanja
-          </h1>
-          <span className="text-gray-600">
-            {items.length} {items.length > 1 ? 'items' : 'item'}
-          </span>
-        </div>
+    <Container className="py-8">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Keranjang Belanja</h1>
+        <p>{items.length} items</p>
+      </div>
 
-        <div className="flex flex-col lg:flex-row gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2">
+          {/* Select All Checkbox */}
+          <div className="mb-4 flex items-center">
+            <input
+              type="checkbox"
+              checked={items && selectedItems.length === items.length}
+              onChange={(e) => handleSelectAll(e.target.checked)}
+              className="mr-2 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+            />
+            <span>Pilih Semua ({items.length})</span>
+          </div>
+
           {/* Cart Items */}
-          <div className="flex-grow space-y-6">
-            {/* Select All */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
-              <label className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={items.length > 0 && selectedItems.length === items.length}
-                  onChange={(e) => handleSelectAll(e.target.checked)}
-                  className="w-5 h-5 text-primary border-gray-300 rounded focus:ring-primary"
-                />
-                <span className="font-medium">Pilih Semua ({items.length})</span>
-              </label>
-            </div>
-
-            {/* Cart Items */}
-            <div className="space-y-4">
-              {items.map((item) => item && (
+          <div className="space-y-4">
+            {items.map((item) => (
+              item && (
                 <CartItem
                   key={item.id}
-                  {...item}
-                  isSelected={selectedItems.includes(item.id)}
-                  onSelect={handleItemSelect}
+                  item={item}
+                  isSelected={selectedItems.some(i => i.id === item.id)}
+                  onSelect={(checked) => handleSelectItem(item, checked)}
                 />
-              ))}
-            </div>
-          </div>
-
-          {/* Summary - Memperlebar container */}
-          <div className="lg:w-[400px]">
-            <CartSummary
-              totalItems={selectedItems.length}
-              totalPrice={totalPrice}
-              onCheckout={handleCheckout}
-              disabled={selectedItems.length === 0}
-            />
+              )
+            ))}
           </div>
         </div>
+
+        {/* Cart Summary */}
+        <div>
+          <CartSummary 
+            selectedItems={selectedItems}
+          />
+        </div>
       </div>
+
+      {isLoading && items.length > 0 && (
+        <div className="fixed inset-0 bg-black/20 flex items-center justify-center">
+          <LoadingSpinner />
+        </div>
+      )}
     </Container>
   )
 } 

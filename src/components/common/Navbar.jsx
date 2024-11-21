@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import Container from './Container'
 import { useState, useEffect } from 'react'
-import { Bars3Icon, XMarkIcon, HeartIcon, ShoppingCartIcon, UserIcon } from '@heroicons/react/24/outline'
+import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline'
 import { getProfile, clearAuth } from '../../store/slices/authSlice'
 
 export default function Navbar() {
@@ -85,52 +85,31 @@ export default function Navbar() {
             <Link to="/activities" className="text-gray-600 hover:text-primary">
               Aktivitas
             </Link>
-            <Link to="/about" className="text-gray-600 hover:text-primary">
-              About
-            </Link>
 
             {user ? (
-              <div className="flex gap-4 items-center">
-                <Link to="/wishlist" className="text-gray-600 hover:text-primary">
-                  <HeartIcon className="w-6 h-6" />
+              <div className="flex items-center gap-6">
+                {/* Cart */}
+                <Link to="/cart" className="text-gray-600 hover:text-primary">
+                  Keranjang {cartItems.length > 0 && `(${cartItems.length})`}
                 </Link>
-                <Link to="/cart" className="relative text-gray-600 hover:text-primary">
-                  <ShoppingCartIcon className="w-6 h-6" />
-                  {cartItems.length > 0 && (
-                    <span className="flex absolute -top-2 -right-2 justify-center items-center w-5 h-5 text-xs text-white bg-red-500 rounded-full">
-                      {cartItems.length}
-                    </span>
-                  )}
-                </Link>
-                <div className="relative group">
-                  <button className="text-gray-600 hover:text-primary">
-                    <UserIcon className="w-6 h-6" />
+
+                {/* User Menu */}
+                <div className="flex items-center gap-6">
+                  <Link to="/transactions" className="text-gray-600 hover:text-primary">
+                    Transaksi
+                  </Link>
+                  <Link to="/profile" className="text-gray-600 hover:text-primary">
+                    Profil Saya
+                  </Link>
+                  <Link to="/about" className="text-gray-600 hover:text-primary">
+                    About
+                  </Link>
+                  <button
+                    onClick={() => dispatch(clearAuth())}
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    Keluar
                   </button>
-                  {/* Dropdown Menu */}
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-2 hidden group-hover:block">
-                    <div className="px-4 py-2 border-b border-gray-100">
-                      <p className="text-sm font-medium text-gray-900">{user.name}</p>
-                      <p className="text-xs text-gray-500">{user.email}</p>
-                    </div>
-                    <Link 
-                      to="/profile" 
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                    >
-                      Profil Saya
-                    </Link>
-                    <Link 
-                      to="/transactions" 
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                    >
-                      Transaksi
-                    </Link>
-                    <button
-                      onClick={() => dispatch(clearAuth())}
-                      className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-50"
-                    >
-                      Keluar
-                    </button>
-                  </div>
                 </div>
               </div>
             ) : (
@@ -176,56 +155,51 @@ export default function Navbar() {
               >
                 Aktivitas
               </Link>
-              <Link 
-                to="/about" 
-                className="text-gray-600 hover:text-primary"
-                onClick={() => setIsOpen(false)}
-              >
-                About
-              </Link>
 
               {user ? (
                 <>
-                  <Link 
-                    to="/wishlist" 
-                    className="text-gray-600 hover:text-primary"
-                    onClick={() => setIsOpen(false)}
-                  >
-                    Wishlist
-                  </Link>
                   <Link 
                     to="/cart" 
                     className="text-gray-600 hover:text-primary"
                     onClick={() => setIsOpen(false)}
                   >
-                    Keranjang ({cartItems.length})
+                    Keranjang {cartItems.length > 0 && `(${cartItems.length})`}
                   </Link>
-                  <Link 
-                    to="/profile" 
-                    className="text-gray-600 hover:text-primary"
-                    onClick={() => setIsOpen(false)}
-                  >
-                    Profil
-                  </Link>
-                  <Link 
-                    to="/transactions" 
-                    className="text-gray-600 hover:text-primary"
-                    onClick={() => setIsOpen(false)}
-                  >
-                    Transaksi
-                  </Link>
-                  <button
-                    onClick={() => {
-                      dispatch(clearAuth())
-                      setIsOpen(false)
-                    }}
-                    className="text-red-600 hover:text-red-700 text-left"
-                  >
-                    Keluar
-                  </button>
+                  <div className="border-t border-gray-200 pt-4 mt-4">
+                    <Link 
+                      to="/transactions" 
+                      className="block text-gray-600 hover:text-primary py-2"
+                      onClick={() => setIsOpen(false)}
+                    >
+                      Transaksi
+                    </Link>
+                    <Link 
+                      to="/profile" 
+                      className="block text-gray-600 hover:text-primary py-2"
+                      onClick={() => setIsOpen(false)}
+                    >
+                      Profil Saya
+                    </Link>
+                    <Link 
+                      to="/about" 
+                      className="block text-gray-600 hover:text-primary py-2"
+                      onClick={() => setIsOpen(false)}
+                    >
+                      About
+                    </Link>
+                    <button
+                      onClick={() => {
+                        dispatch(clearAuth())
+                        setIsOpen(false)
+                      }}
+                      className="w-full text-left text-red-600 hover:text-red-700 py-2"
+                    >
+                      Keluar
+                    </button>
+                  </div>
                 </>
               ) : (
-                <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-4 pt-4 mt-4 border-t border-gray-200">
                   <Link 
                     to="/login" 
                     className="btn btn-primary"

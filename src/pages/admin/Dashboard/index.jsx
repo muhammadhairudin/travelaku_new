@@ -1,16 +1,8 @@
-import { useEffect, useState } from 'react'
-import { useDispatch, useSelector } from 'react-redux'
+import { useState, useEffect } from 'react'
+import { useDispatch } from 'react-redux'
 import Container from '../../../components/common/Container'
 import LoadingSpinner from '../../../components/common/LoadingSpinner'
-import { fetchDashboardStats } from '../../../store/slices/adminSlice'
-import { 
-  UsersIcon, 
-  TicketIcon, 
-  TagIcon, 
-  CurrencyDollarIcon,
-  ArrowTrendingUpIcon,
-  ArrowTrendingDownIcon
-} from '@heroicons/react/24/outline'
+import api from '../../../lib/axios'
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -23,12 +15,11 @@ import {
   Legend,
   ArcElement,
 } from 'chart.js'
-import { Line, Bar, Doughnut } from 'react-chartjs-2'
-import DataTable from './components/DataTable'
-import { fetchAllActivities, fetchAllUsers, fetchAllTransactions, fetchAllCategories } from '../../../store/slices/adminSlice'
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
-import 'leaflet/dist/leaflet.css'
-import L from 'leaflet'
+import { Line, Bar } from 'react-chartjs-2'
+import RecentTransactions from './components/RecentTransactions'
+import ActivityStats from './components/ActivityStats'
+import UserStats from './components/UserStats'
+import TransactionAlert from './components/TransactionAlert'
 
 // Register ChartJS components
 ChartJS.register(
@@ -43,174 +34,211 @@ ChartJS.register(
   ArcElement
 )
 
-// Fix untuk icon marker
-delete L.Icon.Default.prototype._getIconUrl
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-})
-
 export default function AdminDashboard() {
-  const dispatch = useDispatch()
-  const { 
-    stats, 
-    activities, 
-    users, 
-    transactions, 
-    categories,
-    isLoading 
-  } = useSelector((state) => state.admin)
-
-  // Tambahkan state untuk timeRange
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [transactions, setTransactions] = useState([])
+  const [activities, setActivities] = useState([])
+  const [categories, setCategories] = useState([])
+  const [users, setUsers] = useState([])
   const [timeRange, setTimeRange] = useState('week')
+  const [stats, setStats] = useState({
+    totalTransactions: 0,
+    pendingTransactions: 0,
+    successTransactions: 0,
+    totalRevenue: 0,
+    revenueChart: {
+      labels: [],
+      data: []
+    },
+    transactionChart: {
+      labels: [],
+      data: []
+    }
+  })
 
   useEffect(() => {
-    // Fetch data dengan timeRange
-    dispatch(fetchDashboardStats(timeRange))
-    dispatch(fetchAllActivities())
-    dispatch(fetchAllUsers())
-    dispatch(fetchAllTransactions())
-    dispatch(fetchAllCategories())
-  }, [dispatch, timeRange]) // Tambahkan timeRange sebagai dependency
+    fetchDashboardData()
+  }, [timeRange])
 
-  if (isLoading) return <LoadingSpinner />
+  const fetchDashboardData = async () => {
+    try {
+      setIsLoading(true)
+      const [
+        transactionsResponse,
+        activitiesResponse,
+        categoriesResponse,
+        usersResponse
+      ] = await Promise.all([
+        api.get('/api/v1/all-transactions'),
+        api.get('/api/v1/activities'),
+        api.get('/api/v1/categories'),
+        api.get('/api/v1/all-user')
+      ])
 
-  // Stat cards data dari API
-  const statCards = [
-    {
-      title: 'Total Pengguna',
-      value: stats?.totalUsers || 0,
-      icon: <UsersIcon className="w-8 h-8" />,
-      change: stats?.userGrowth || '+0%',
-      isIncrease: stats?.userGrowth?.startsWith('+'),
-      bgColor: 'bg-blue-50',
-      iconColor: 'text-blue-500'
-    },
-    {
-      title: 'Total Aktivitas',
-      value: stats?.totalActivities || 0,
-      icon: <TicketIcon className="w-8 h-8" />,
-      change: stats?.activityGrowth || '+0%',
-      isIncrease: stats?.activityGrowth?.startsWith('+'),
-      bgColor: 'bg-green-50',
-      iconColor: 'text-green-500'
-    },
-    {
-      title: 'Total Kategori',
-      value: stats?.totalCategories || 0,
-      icon: <TagIcon className="w-8 h-8" />,
-      change: stats?.categoryGrowth || '+0%',
-      isIncrease: stats?.categoryGrowth?.startsWith('+'),
-      bgColor: 'bg-purple-50',
-      iconColor: 'text-purple-500'
-    },
-    {
-      title: 'Total Transaksi',
-      value: `Rp ${(stats?.totalTransactionAmount || 0).toLocaleString('id-ID')}`,
-      icon: <CurrencyDollarIcon className="w-8 h-8" />,
-      change: stats?.transactionGrowth || '+0%',
-      isIncrease: stats?.transactionGrowth?.startsWith('+'),
-      bgColor: 'bg-orange-50',
-      iconColor: 'text-orange-500'
-    },
-  ]
+      setTransactions(transactionsResponse.data.data || [])
+      setActivities(activitiesResponse.data.data || [])
+      setCategories(categoriesResponse.data.data || [])
+      setUsers(usersResponse.data.data || [])
 
-  // Chart data dari API
-  const revenueData = {
-    labels: stats?.revenueChart?.labels || [],
-    datasets: [
-      {
-        label: 'Pendapatan',
-        data: stats?.revenueChart?.data || [],
-        borderColor: 'rgb(75, 192, 192)',
-        tension: 0.4,
+      // Hitung statistik dari data transaksi
+      const calculatedStats = calculateStats(transactionsResponse.data.data || [])
+      setStats(calculatedStats)
+    } catch (err) {
+      console.error('Failed to fetch dashboard data:', err)
+      setError('Gagal memuat data dashboard')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Fungsi untuk menghitung statistik
+  const calculateStats = (transactions) => {
+    const now = new Date()
+    const filteredTransactions = transactions.filter(t => {
+      const transactionDate = new Date(t.createdAt)
+      if (timeRange === 'week') {
+        return now - transactionDate <= 7 * 24 * 60 * 60 * 1000
+      }
+      if (timeRange === 'month') {
+        return now.getMonth() === transactionDate.getMonth()
+      }
+      // year
+      return now.getFullYear() === transactionDate.getFullYear()
+    })
+
+    // Hitung total dan status
+    const totalTransactions = filteredTransactions.length
+    const pendingTransactions = filteredTransactions.filter(t => 
+      t.status === 'pending' && t.proofPaymentUrl
+    ).length
+    const successTransactions = filteredTransactions.filter(t => 
+      t.status === 'success'
+    ).length
+    const totalRevenue = filteredTransactions
+      .filter(t => t.status === 'success')
+      .reduce((acc, t) => acc + (t.totalAmount || 0), 0)
+
+    // Generate data untuk chart
+    const chartData = generateChartData(filteredTransactions)
+
+    return {
+      totalTransactions,
+      pendingTransactions,
+      successTransactions,
+      totalRevenue,
+      revenueChart: chartData.revenue,
+      transactionChart: chartData.transactions
+    }
+  }
+
+  const generateChartData = (transactions) => {
+    const dateLabels = []
+    const revenueData = []
+    const transactionData = []
+
+    // Buat label dan data berdasarkan timeRange
+    if (timeRange === 'week') {
+      // Data per hari dalam seminggu
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date()
+        date.setDate(date.getDate() - i)
+        dateLabels.push(date.toLocaleDateString('id-ID', { weekday: 'short' }))
+        
+        const dayTransactions = transactions.filter(t => {
+          const tDate = new Date(t.createdAt)
+          return tDate.toDateString() === date.toDateString()
+        })
+
+        revenueData.push(
+          dayTransactions
+            .filter(t => t.status === 'success')
+            .reduce((acc, t) => acc + (t.totalAmount || 0), 0)
+        )
+        transactionData.push(dayTransactions.length)
+      }
+    } else if (timeRange === 'month') {
+      // Data per minggu dalam sebulan
+      for (let i = 0; i < 4; i++) {
+        dateLabels.push(`Minggu ${i + 1}`)
+        
+        const weekTransactions = transactions.filter(t => {
+          const tDate = new Date(t.createdAt)
+          const weekNumber = Math.floor((tDate.getDate() - 1) / 7)
+          return weekNumber === i
+        })
+
+        revenueData.push(
+          weekTransactions
+            .filter(t => t.status === 'success')
+            .reduce((acc, t) => acc + (t.totalAmount || 0), 0)
+        )
+        transactionData.push(weekTransactions.length)
+      }
+    } else {
+      // Data per bulan dalam setahun
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des']
+      months.forEach((month, i) => {
+        dateLabels.push(month)
+        
+        const monthTransactions = transactions.filter(t => {
+          const tDate = new Date(t.createdAt)
+          return tDate.getMonth() === i
+        })
+
+        revenueData.push(
+          monthTransactions
+            .filter(t => t.status === 'success')
+            .reduce((acc, t) => acc + (t.totalAmount || 0), 0)
+        )
+        transactionData.push(monthTransactions.length)
+      })
+    }
+
+    return {
+      revenue: {
+        labels: dateLabels,
+        data: revenueData
       },
-    ],
+      transactions: {
+        labels: dateLabels,
+        data: transactionData
+      }
+    }
   }
 
-  const transactionData = {
-    labels: stats?.transactionChart?.labels || [],
-    datasets: [
-      {
-        label: 'Transaksi',
-        data: stats?.transactionChart?.data || [],
-        backgroundColor: 'rgba(54, 162, 235, 0.5)',
-      },
-    ],
+  if (isLoading) {
+    return (
+      <Container className="min-h-[80vh] relative">
+        <div className="absolute inset-0 flex items-center justify-center">
+          <LoadingSpinner />
+        </div>
+      </Container>
+    )
   }
 
-  // Ubah categoryDistribution menjadi map distribution
-  const locationDistributionData = stats?.locationDistribution || []
-
-  // Columns definition
-  const activityColumns = [
-    { key: 'title', label: 'Judul' },
-    { key: 'price', label: 'Harga', render: (item) => `Rp ${item.price.toLocaleString('id-ID')}` },
-    { key: 'rating', label: 'Rating' },
-    { 
-      key: 'status', 
-      label: 'Status',
-      render: (item) => (
-        <span className={`px-2 py-1 rounded-full text-xs ${
-          item.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-        }`}>
-          {item.isActive ? 'Aktif' : 'Nonaktif'}
-        </span>
-      )
-    },
-  ]
-
-  const userColumns = [
-    { key: 'name', label: 'Nama' },
-    { key: 'email', label: 'Email' },
-    { key: 'role', label: 'Role' },
-    { 
-      key: 'createdAt', 
-      label: 'Terdaftar',
-      render: (item) => new Date(item.createdAt).toLocaleDateString('id-ID')
-    },
-  ]
-
-  const transactionColumns = [
-    { key: 'id', label: 'ID Transaksi' },
-    { 
-      key: 'amount', 
-      label: 'Total',
-      render: (item) => `Rp ${item.amount.toLocaleString('id-ID')}`
-    },
-    { key: 'status', label: 'Status' },
-    { 
-      key: 'createdAt', 
-      label: 'Tanggal',
-      render: (item) => new Date(item.createdAt).toLocaleDateString('id-ID')
-    },
-  ]
-
-  // Action handlers
-  const handleEditActivity = (activity) => {
-    console.log('Edit activity:', activity)
-  }
-
-  const handleViewUser = (user) => {
-    console.log('View user:', user)
-  }
-
-  const handleViewTransaction = (transaction) => {
-    console.log('View transaction:', transaction)
+  if (error) {
+    return (
+      <Container className="min-h-[80vh] relative">
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="text-center text-red-500">{error}</div>
+        </div>
+      </Container>
+    )
   }
 
   return (
     <Container className="py-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="font-serif text-3xl font-bold text-gray-900">
-          Dashboard Admin
-        </h1>
-        <p className="mt-2 text-gray-600">
-          Selamat datang kembali, berikut adalah ringkasan data hari ini
+        <h1 className="text-2xl font-bold mb-2">Dashboard Admin</h1>
+        <p className="text-gray-600">
+          Ringkasan data dan statistik
         </p>
       </div>
+
+      {/* Transaction Alerts */}
+      <TransactionAlert transactions={transactions} />
 
       {/* Time Range Filter */}
       <div className="mb-8">
@@ -231,165 +259,112 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-1 gap-6 mb-8 md:grid-cols-2 lg:grid-cols-4">
-        {statCards.map((stat, index) => (
-          <div
-            key={index}
-            className={`${stat.bgColor} rounded-lg p-6 transition-transform hover:scale-105`}
-          >
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="mb-1 text-sm font-medium text-gray-500">{stat.title}</p>
-                <h3 className="text-2xl font-bold text-gray-900">{stat.value}</h3>
-              </div>
-              <div className={`${stat.iconColor} ${stat.bgColor} p-3 rounded-lg`}>
-                {stat.icon}
-              </div>
-            </div>
-            <div className="flex items-center mt-4">
-              {stat.isIncrease ? (
-                <ArrowTrendingUpIcon className="mr-1 w-4 h-4 text-green-500" />
-              ) : (
-                <ArrowTrendingDownIcon className="mr-1 w-4 h-4 text-red-500" />
-              )}
-              <span className={stat.isIncrease ? 'text-green-500' : 'text-red-500'}>
-                {stat.change}
-              </span>
-              <span className="ml-1 text-sm text-gray-500">vs periode sebelumnya</span>
-            </div>
-          </div>
-        ))}
+      {/* Transaction Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="bg-white p-6 rounded-lg shadow">
+          <p className="text-sm text-gray-600">Total Transaksi</p>
+          <p className="text-2xl font-bold mt-2">{stats.totalTransactions}</p>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow">
+          <p className="text-sm text-gray-600">Menunggu Konfirmasi</p>
+          <p className="text-2xl font-bold mt-2 text-blue-600">
+            {stats.pendingTransactions}
+          </p>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow">
+          <p className="text-sm text-gray-600">Transaksi Sukses</p>
+          <p className="text-2xl font-bold mt-2 text-green-600">
+            {stats.successTransactions}
+          </p>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow">
+          <p className="text-sm text-gray-600">Total Pendapatan</p>
+          <p className="text-2xl font-bold mt-2 text-primary">
+            Rp {stats.totalRevenue.toLocaleString('id-ID')}
+          </p>
+        </div>
       </div>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 gap-8 mb-8 lg:grid-cols-2">
+      {/* Transaction Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
         {/* Revenue Chart */}
-        <div className="p-6 bg-white rounded-lg shadow">
-          <h3 className="mb-4 text-lg font-semibold text-gray-900">
-            Grafik Pendapatan
-          </h3>
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h3 className="text-lg font-bold mb-4">Pendapatan</h3>
           <Line
-            data={revenueData}
+            data={{
+              labels: stats.revenueChart.labels,
+              datasets: [
+                {
+                  label: 'Pendapatan',
+                  data: stats.revenueChart.data,
+                  borderColor: 'rgb(75, 192, 192)',
+                  tension: 0.4,
+                },
+              ],
+            }}
             options={{
               responsive: true,
-              plugins: {
-                legend: {
-                  position: 'top',
-                },
-              },
+              scales: {
+                y: {
+                  beginAtZero: true,
+                  ticks: {
+                    callback: (value) => `Rp ${value.toLocaleString('id-ID')}`
+                  }
+                }
+              }
             }}
           />
         </div>
 
         {/* Transaction Chart */}
-        <div className="p-6 bg-white rounded-lg shadow">
-          <h3 className="mb-4 text-lg font-semibold text-gray-900">
-            Transaksi per Hari
-          </h3>
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h3 className="text-lg font-bold mb-4">Transaksi</h3>
           <Bar
-            data={transactionData}
+            data={{
+              labels: stats.transactionChart.labels,
+              datasets: [
+                {
+                  label: 'Jumlah Transaksi',
+                  data: stats.transactionChart.data,
+                  backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                },
+              ],
+            }}
             options={{
               responsive: true,
-              plugins: {
-                legend: {
-                  position: 'top',
-                },
-              },
+              scales: {
+                y: {
+                  beginAtZero: true,
+                  ticks: {
+                    stepSize: 1
+                  }
+                }
+              }
             }}
           />
         </div>
       </div>
 
-      {/* Ganti chart distribusi kategori dengan peta */}
-      <div className="bg-white rounded-lg shadow p-6 mb-8">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">
-          Distribusi Aktivitas per Wilayah
-        </h3>
-        <div className="h-[500px] rounded-lg overflow-hidden">
-          <MapContainer 
-            center={[-2.5489, 118.0149]} // Koordinat tengah Indonesia
-            zoom={5} 
-            style={{ height: '100%', width: '100%' }}
-          >
-            <TileLayer
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            />
-            {locationDistributionData.map((location) => (
-              <Marker 
-                key={location.id}
-                position={[location.latitude, location.longitude]}
-              >
-                <Popup>
-                  <div className="p-2">
-                    <h4 className="font-medium">{location.city}, {location.province}</h4>
-                    <p className="text-sm text-gray-600">
-                      {location.totalActivities} Aktivitas
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      Total Transaksi: Rp {location.totalRevenue?.toLocaleString('id-ID')}
-                    </p>
-                  </div>
-                </Popup>
-              </Marker>
-            ))}
-          </MapContainer>
-        </div>
-        
-        {/* Legend/Summary */}
-        <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-          {locationDistributionData.slice(0, 4).map((location) => (
-            <div key={location.id} className="bg-gray-50 p-3 rounded-lg">
-              <h4 className="font-medium text-sm">{location.city}</h4>
-              <p className="text-xs text-gray-500">{location.totalActivities} Aktivitas</p>
-            </div>
-          ))}
-        </div>
+      {/* User Stats */}
+      <div className="mb-8">
+        <h2 className="text-xl font-bold mb-6">Statistik Pengguna</h2>
+        <UserStats users={users} />
       </div>
 
-      {/* Recent Data Tables */}
-      <div className="grid grid-cols-1 gap-8 mt-8">
-        {/* Recent Activities */}
-        <DataTable
-          title="Aktivitas Terbaru"
-          columns={activityColumns}
-          data={activities}
-          actions={[
-            {
-              label: 'Edit',
-              onClick: handleEditActivity,
-              className: 'text-blue-600 hover:text-blue-800'
-            }
-          ]}
+      {/* Activity Stats */}
+      <div className="mb-8">
+        <h2 className="text-xl font-bold mb-6">Statistik Aktivitas</h2>
+        <ActivityStats 
+          activities={activities}
+          categories={categories}
         />
+      </div>
 
-        {/* Recent Users */}
-        <DataTable
-          title="Pengguna Terbaru"
-          columns={userColumns}
-          data={users}
-          actions={[
-            {
-              label: 'Lihat',
-              onClick: handleViewUser,
-              className: 'text-green-600 hover:text-green-800'
-            }
-          ]}
-        />
-
-        {/* Recent Transactions */}
-        <DataTable
-          title="Transaksi Terbaru"
-          columns={transactionColumns}
-          data={transactions}
-          actions={[
-            {
-              label: 'Detail',
-              onClick: handleViewTransaction,
-              className: 'text-purple-600 hover:text-purple-800'
-            }
-          ]}
+      {/* Recent Transactions */}
+      <div className="mb-8">
+        <h2 className="text-xl font-bold mb-6">Transaksi Terbaru</h2>
+        <RecentTransactions 
+          transactions={transactions.slice(0, 5)}
         />
       </div>
     </Container>

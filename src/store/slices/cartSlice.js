@@ -7,21 +7,35 @@ export const fetchCart = createAsyncThunk(
   async (_, { rejectWithValue }) => {
     try {
       const response = await cartService.getCart()
+      console.log('Cart Response:', response)
+      
+      // Pastikan data valid
+      if (!response.data || !Array.isArray(response.data)) {
+        throw new Error('Invalid cart data')
+      }
+      
       return response.data
     } catch (error) {
-      return rejectWithValue(error.response?.data || error.message)
+      console.error('Fetch cart error:', error)
+      return rejectWithValue(error.message || 'Gagal memuat keranjang')
     }
   }
 )
 
 export const addToCart = createAsyncThunk(
   'cart/addToCart',
-  async ({ activityId, quantity }, { rejectWithValue }) => {
+  async ({ activityId, quantity }, { rejectWithValue, dispatch }) => {
     try {
       const response = await cartService.addToCart({ activityId, quantity })
+      console.log('Add to cart response:', response)
+      
+      // Refresh cart setelah menambah item
+      await dispatch(fetchCart())
+      
       return response.data
     } catch (error) {
-      return rejectWithValue(error.response?.data || error.message)
+      console.error('Add to cart error:', error)
+      return rejectWithValue(error.response?.data?.message || 'Gagal menambahkan ke keranjang')
     }
   }
 )
@@ -40,12 +54,24 @@ export const removeFromCart = createAsyncThunk(
 
 export const updateCartQuantity = createAsyncThunk(
   'cart/updateQuantity',
-  async ({ cartId, quantity }, { rejectWithValue }) => {
+  async ({ cartId, quantity }, { rejectWithValue, dispatch }) => {
     try {
+      console.log('Updating cart quantity:', { cartId, quantity })
+      
       const response = await cartService.updateCartQuantity(cartId, quantity)
+      console.log('Update quantity response:', response)
+
+      if (response.status === 'error') {
+        throw new Error(response.message || 'Gagal mengupdate quantity')
+      }
+
+      // Refresh cart setelah update berhasil
+      await dispatch(fetchCart())
+      
       return response.data
     } catch (error) {
-      return rejectWithValue(error.response?.data || error.message)
+      console.error('Update quantity error:', error)
+      return rejectWithValue(error.message || 'Gagal mengupdate quantity')
     }
   }
 )
@@ -72,24 +98,26 @@ const cartSlice = createSlice({
       })
       .addCase(fetchCart.fulfilled, (state, action) => {
         state.isLoading = false
-        state.items = action.payload
+        state.items = action.payload || []
+        console.log('Cart items updated:', state.items)
       })
       .addCase(fetchCart.rejected, (state, action) => {
         state.isLoading = false
         state.error = action.payload
+        console.error('Fetch cart rejected:', action.payload)
       })
       // Add to Cart
       .addCase(addToCart.pending, (state) => {
         state.isLoading = true
         state.error = null
       })
-      .addCase(addToCart.fulfilled, (state, action) => {
+      .addCase(addToCart.fulfilled, (state) => {
         state.isLoading = false
-        state.items.push(action.payload)
       })
       .addCase(addToCart.rejected, (state, action) => {
         state.isLoading = false
         state.error = action.payload
+        console.error('Add to cart rejected:', action.payload)
       })
       // Remove from Cart
       .addCase(removeFromCart.pending, (state) => {
@@ -109,16 +137,14 @@ const cartSlice = createSlice({
         state.isLoading = true
         state.error = null
       })
-      .addCase(updateCartQuantity.fulfilled, (state, action) => {
+      .addCase(updateCartQuantity.fulfilled, (state) => {
         state.isLoading = false
-        const index = state.items.findIndex(item => item.id === action.payload.id)
-        if (index !== -1) {
-          state.items[index] = action.payload
-        }
+        // Tidak perlu update items di sini karena sudah di-refresh oleh fetchCart
       })
       .addCase(updateCartQuantity.rejected, (state, action) => {
         state.isLoading = false
         state.error = action.payload
+        console.error('Update quantity rejected:', action.payload)
       })
   },
 })
